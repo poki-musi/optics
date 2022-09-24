@@ -1,9 +1,3 @@
-type (_, _) optic =
-  | Prism :
-    ('s -> ('c, 'a) Either.t) * (('c, 'a) Either.t -> 's) -> ('s, 'a) optic
-  | Affine :
-    ('s -> ('c, 'b * 'a) Either.t) * (('c, 'b * 'a) Either.t -> 's) -> ('s, 'a) optic
-
 module Iso = struct
   type (_, _) t = | Iso : { get : 's -> 'a ; set : 'a -> 's } -> ('s, 'a) t
 
@@ -326,5 +320,3 @@ let _hd () = let open Either in Affine.make
 let _tl () = let open Either in Affine.make
   ~get:(function [] -> Left () | x::xs -> Right (x, xs))
   ~set:(function Left _ -> [] | Right (x, xs) -> x::xs)
-
-let _1_1_1 () = _1 () % _1 () % _1 ()
