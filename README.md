@@ -5,4 +5,8 @@ The process of making it can be read [here](https://poki-musi.github.io/optics-i
 
 ## Documentation
 
-Either read the `.mli` file that encapsulates the library.
+Read the `.mli` header file.
+
+## Contributions
+
+They're very much welcomed. Just post an issue in this repository.
