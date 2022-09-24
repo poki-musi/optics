@@ -1,7 +1,13 @@
 module Iso = struct
-  type (_, _) t = | Iso : { get : 's -> 'a ; set : 'a -> 's } -> ('s, 'a) t
+  type (_, _, _, _) t = Iso : {
+    get : 's -> 'a ;
+    set : 'b -> 't ;
+  } -> ('s, 't, 'a, 'b) t
+
+  type ('s, 'a) t' = ('s, 's, 'a, 'a) t
 
   let[@ocaml.inline] make ~get ~set = Iso {get; set}
+  let[@ocaml.inline] make' ~get ~set : ('s, 'a) t' = Iso {get; set}
   let[@ocaml.inline] down (Iso {get; _}) v = get v
   let[@ocaml.inline] up (Iso {set; _}) v = set v
   let[@ocaml.inline] flip (Iso {get; set}) = Iso {get=set; set=get}
@@ -18,10 +24,12 @@ module Iso = struct
 end
 
 module Lens = struct
-  type ('s, 'a) t =
-    Lens : { get : 's -> 'c * 'a ; set : 'c * 'a -> 's } -> ('s, 'a) t
+  type (_, _, _, _) t =
+    Lens : { get : 's -> 'c * 'a ; set : 'c * 'b -> 't } -> ('s, 't, 'a, 'b) t
+  type ('s, 'a) t' = ('s, 's, 'a, 'a) t
 
   let[@ocaml.inline] make ~get ~set = (Lens {get; set})
+  let[@ocaml.inline] make' ~get ~set : ('s, 'a) t' = (Lens {get; set})
   let[@ocaml.inline] view (Lens {get; _}) v = v |> get |> snd
   let[@ocaml.inline] update (Lens {get; set}) f s = let b, a = get s in set (b, f a)
   let[@ocaml.inline] set lens v = update lens (Fun.const v)
@@ -39,12 +47,15 @@ module Lens = struct
 end
 
 module Prism = struct
-  type ('s, 'a) t = Prism : {
+  type (_, _, _, _) t = Prism : {
     get : 's -> ('c, 'a) Either.t ;
-    set : ('c, 'a) Either.t -> 's
-  } -> ('s, 'a) t
+    set : ('c, 'b) Either.t -> 't ;
+  } -> ('s, 't, 'a, 'b) t
+
+  type ('s, 'a) t' = ('s, 's, 'a, 'a) t
 
   let[@ocaml.inline] make ~get ~set = (Prism {get; set})
+  let[@ocaml.inline] make' ~get ~set : ('s, 'a) t' = (Prism {get; set})
   let[@ocaml.inline] preview (Prism {get; _}) v = get v |> Either.fold ~left:(Fun.const Option.none) ~right:Option.some
   let[@ocaml.inline] review (Prism {set; _}) v = Either.Right v |> set
   let[@ocaml.inline] exists (Prism {get; _}) v = get v |> Either.is_right
@@ -70,17 +81,29 @@ module Prism = struct
 end
 
 module Affine = struct
-  type ('s, 'a) t = Affine : {
-    get : 's -> ('c, 'b * 'a) Either.t ;
-    set : ('c, 'b * 'a) Either.t -> 's
-  } -> ('s, 'a) t
+  type (_, _, _, _) t = Affine : {
+    get : 's -> ('c1, 'c2 * 'a) Either.t ;
+    set : ('c1, 'c2 * 'b) Either.t -> 't ;
+  } -> ('s, 't, 'a, 'b) t
+
+  type ('s, 'a) t' = ('s, 's, 'a, 'a) t
 
   let[@ocaml.inline] make ~get ~set = Affine {get; set}
-  let[@ocaml.inline] preview (Affine {get; _}) v = get v |> Either.fold ~right:snd ~left:Fun.(const None)
-  let[@ocaml.inline] update (Affine {get; set}) f v = get v |> Either.map_right (fun (b, a) -> (b, f a)) |> set
-  let[@ocaml.inline] set affine a v = update affine Fun.(const a) v
-  let[@ocaml.inline] exists (Affine {get; _}) v = get v |> Either.is_right
-  let[@ocaml.inline] isn't (Affine {get; _}) v = get v |> Either.is_left
+  let[@ocaml.inline] make' ~get ~set : ('s, 'a) t' = Affine {get; set}
+  let[@ocaml.inline] preview (Affine {get; _}) v =
+    get v |> Either.fold ~right:snd ~left:Fun.(const None)
+
+  let[@ocaml.inline] update (Affine {get; set}) f v =
+    get v |> Either.map_right (fun (b, a) -> (b, f a)) |> set
+
+  let[@ocaml.inline] set affine a v =
+    update affine Fun.(const a) v
+
+  let[@ocaml.inline] exists (Affine {get; _}) v =
+    get v |> Either.is_right
+
+  let[@ocaml.inline] isn't (Affine {get; _}) v =
+    get v |> Either.is_left
 
   let compose
     (Affine {get=get1; set=set1})
@@ -108,10 +131,15 @@ module Affine = struct
     in Affine {get; set}
 end
 
-type ('s, 'a) iso    = ('s, 'a) Iso.t
-type ('s, 'a) lens   = ('s, 'a) Lens.t
-type ('s, 'a) prism  = ('s, 'a) Prism.t
-type ('s, 'a) affine = ('s, 'a) Affine.t
+type ('s, 't, 'a, 'b) iso = ('s, 't, 'a, 'b) Iso.t
+type ('s, 't, 'a, 'b) lens = ('s, 't, 'a, 'b) Lens.t
+type ('s, 't, 'a, 'b) prism = ('s, 't, 'a, 'b) Prism.t
+type ('s, 't, 'a, 'b) affine = ('s, 't, 'a, 'b) Affine.t
+
+type ('s, 'a) iso'    = ('s, 'a) Iso.t'
+type ('s, 'a) lens'   = ('s, 'a) Lens.t'
+type ('s, 'a) prism'  = ('s, 'a) Prism.t'
+type ('s, 'a) affine' = ('s, 'a) Affine.t'
 
 module Compose = struct
   (** Iso composition *)
