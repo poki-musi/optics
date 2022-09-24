@@ -1,0 +1,5 @@
+(library
+ (name optics)
+ (public_name optics)
+ (synopsis "Functional optics")
+ (modules optics))
