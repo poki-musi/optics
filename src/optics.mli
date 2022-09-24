@@ -1,8 +1,20 @@
+(**
+    Existential optics in OCaml.
+
+    Intended to be an experiment, but also a simple implementation
+    of several optics. Generally, it is recommended to open
+    this module wherever it is needed.
+ *)
+
 module Iso :
   sig
-    type (_, _, _, _) t =
-        Iso : { get : 's -> 'a; set : 'b -> 't; } -> ('s, 't, 'a, 'b) t
+    type (_, _, _, _) t = Iso : {
+      get : 's -> 'a;
+      set : 'b -> 't;
+    } -> ('s, 't, 'a, 'b) t
+
     type ('s, 'a) t' = ('s, 's, 'a, 'a) t
+
     val make : get:('a -> 'b) -> set:('c -> 'd) -> ('a, 'd, 'b, 'c) t
     val make' : get:('s -> 'a) -> set:('a -> 's) -> ('s, 'a) t'
     val down : ('a, 'b, 'c, 'd) t -> 'a -> 'c
@@ -13,12 +25,16 @@ module Iso :
     val compose :
       ('a, 'b, 'c, 'd) t -> ('c, 'd, 'e, 'f) t -> ('a, 'b, 'e, 'f) t
   end
+
 module Lens :
   sig
-    type (_, _, _, _) t =
-        Lens : { get : 's -> 'c * 'a; set : 'c * 'b -> 't;
-        } -> ('s, 't, 'a, 'b) t
+    type (_, _, _, _) t = Lens : {
+      get : 's -> 'c * 'a;
+      set : 'c * 'b -> 't;
+    } -> ('s, 't, 'a, 'b) t
+
     type ('s, 'a) t' = ('s, 's, 'a, 'a) t
+
     val make :
       get:('a -> 'b * 'c) -> set:('b * 'd -> 'e) -> ('a, 'e, 'c, 'd) t
     val make' : get:('s -> 'b * 'a) -> set:('b * 'a -> 's) -> ('s, 'a) t'
@@ -61,7 +77,7 @@ module Affine :
     val make' :
       get:('s -> ('b, 'c * 'a) Either.t) ->
       set:(('b, 'c * 'a) Either.t -> 's) -> ('s, 'a) t'
-    val preview : ('a, 'b, 'c option, 'd) t -> 'a -> 'c option
+    val preview : ('a, 'b, 'c, 'd) t -> 'a -> 'c option
     val update : ('a, 'b, 'c, 'd) t -> ('c -> 'd) -> 'a -> 'b
     val set : ('a, 'b, 'c, 'd) t -> 'd -> 'a -> 'b
     val exists : ('a, 'b, 'c, 'd) t -> 'a -> bool
@@ -173,12 +189,12 @@ val update : ('a, 'b, 'c, 'd) Lens.t -> ('c -> 'd) -> 'a -> 'b
 val set : ('a, 'b, 'c, 'd) Lens.t -> 'd -> 'a -> 'b
 val preview : ('a, 'b, 'c, 'd) Prism.t -> 'a -> 'c option
 val review : ('a, 'b, 'c, 'd) Prism.t -> 'd -> 'b
-val preview' : ('a, 'b, 'c option, 'd) Affine.t -> 'a -> 'c option
+val preview' : ('a, 'b, 'c, 'd) Affine.t -> 'a -> 'c option
 val update' : ('a, 'b, 'c, 'd) Affine.t -> ('c -> 'd) -> 'a -> 'b
 val set' : ('a, 'b, 'c, 'd) Affine.t -> 'd -> 'a -> 'b
-val _1 : unit -> ('a * 'b, 'c * 'b, 'a, 'c) Lens.t
-val _2 : unit -> ('a * 'b, 'a * 'c, 'b, 'c) Lens.t
-val _right : unit -> (('a, 'b) Either.t, ('a, 'c) Either.t, 'b, 'c) Prism.t
-val _left : unit -> (('a, 'b) Either.t, ('c, 'b) Either.t, 'a, 'c) Prism.t
-val _hd : unit -> ('a list, 'a list, 'a, 'a) Affine.t
-val _tl : unit -> ('a list, 'a list, 'a list, 'a list) Affine.t
+val _1 : unit -> ('a * 'b, 'a) Lens.t'
+val _2 : unit -> ('a * 'b, 'b) Lens.t'
+val _right : unit -> (('a, 'b) Either.t, 'b) Prism.t'
+val _left : unit -> (('a, 'b) Either.t, 'a) Prism.t'
+val _hd : unit -> ('a list, 'a) Affine.t'
+val _tl : unit -> ('a list, 'a list) Affine.t'

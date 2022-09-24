@@ -91,7 +91,7 @@ module Affine = struct
   let[@ocaml.inline] make ~get ~set = Affine {get; set}
   let[@ocaml.inline] make' ~get ~set : ('s, 'a) t' = Affine {get; set}
   let[@ocaml.inline] preview (Affine {get; _}) v =
-    get v |> Either.fold ~right:snd ~left:Fun.(const None)
+    get v |> Either.fold ~right:(fun (_, x) -> Some x) ~left:Fun.(const None)
 
   let[@ocaml.inline] update (Affine {get; set}) f v =
     get v |> Either.map_right (fun (b, a) -> (b, f a)) |> set
@@ -325,26 +325,26 @@ let preview' = Affine.preview
 let update' = Affine.update
 let set' = Affine.set
 
-let _1 () = Lens.make
+let _1 () = Lens.make'
   ~get:(fun (a, b) -> (b, a))
   ~set:(fun (b, a) -> (a, b))
 
-let _2 () = Lens.make
+let _2 () = Lens.make'
   ~get:(fun (a, b) -> (a, b))
   ~set:(fun (a, b) -> (a, b))
 
-let _right () = Prism.make
+let _right () = Prism.make'
   ~get:(Either.map ~left:Fun.id ~right:Fun.id)
   ~set:(Either.map ~left:Fun.id ~right:Fun.id)
 
-let _left () = Prism.make
+let _left () = Prism.make'
   ~get:Either.(fold ~left:right ~right:left)
   ~set:Either.(fold ~left:right ~right:left)
 
-let _hd () = let open Either in Affine.make
+let _hd () = let open Either in Affine.make'
   ~get:(function [] -> Left () | x::xs -> Right (xs, x))
   ~set:(function Left _ -> [] | Right (xs, x) -> x::xs)
 
-let _tl () = let open Either in Affine.make
+let _tl () = let open Either in Affine.make'
   ~get:(function [] -> Left () | x::xs -> Right (x, xs))
   ~set:(function Left _ -> [] | Right (x, xs) -> x::xs)
