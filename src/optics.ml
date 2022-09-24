@@ -1,59 +1,65 @@
-module Iso = struct
-  type ('a, 'b) t = { get : 'a -> 'b ; set : 'b -> 'a }
+type (_, _) optic =
+  | Prism :
+    ('s -> ('c, 'a) Either.t) * (('c, 'a) Either.t -> 's) -> ('s, 'a) optic
+  | Affine :
+    ('s -> ('c, 'b * 'a) Either.t) * (('c, 'b * 'a) Either.t -> 's) -> ('s, 'a) optic
 
-  let[@ocaml.inline] make ~get ~set = {get; set}
-  let[@ocaml.inline] down {get; _} v = get v
-  let[@ocaml.inline] up {set; _} v = set v
-  let[@ocaml.inline] flip {get; set} = {get=set; set=get}
-  let[@ocaml.inline] iso_map {get; set} f v = get v |> f |> set
-  let[@ocaml.inline] down_map {get; set} f v = set v |> f |> get
+module Iso = struct
+  type (_, _) t = | Iso : { get : 's -> 'a ; set : 'a -> 's } -> ('s, 'a) t
+
+  let[@ocaml.inline] make ~get ~set = Iso {get; set}
+  let[@ocaml.inline] down (Iso {get; _}) v = get v
+  let[@ocaml.inline] up (Iso {set; _}) v = set v
+  let[@ocaml.inline] flip (Iso {get; set}) = Iso {get=set; set=get}
+  let[@ocaml.inline] iso_map (Iso {get; set}) f v = get v |> f |> set
+  let[@ocaml.inline] down_map (Iso {get; set}) f v = set v |> f |> get
 
   let compose
-    {get=get1; set=set1}
-    {get=get2; set=set2}
+    (Iso {get=get1; set=set1})
+    (Iso {get=get2; set=set2})
     =
     let get v = v |> get1 |> get2 in
     let set v = v |> set2 |> set1 in
-    { get; set }
+    (Iso { get; set })
 end
 
 module Lens = struct
-  type ('s, 'a, 'b) t = { get : 's -> 'b * 'a ; set : 'b * 'a -> 's }
+  type ('s, 'a) t =
+    Lens : { get : 's -> 'c * 'a ; set : 'c * 'a -> 's } -> ('s, 'a) t
 
-  let[@ocaml.inline] make ~get ~set : ('s, 'a, 'b) t = {get; set}
-  let[@ocaml.inline] view ({get; _} : ('s, 'a, 'b) t) v = v |> get |> snd
-  let[@ocaml.inline] update {get; set} f s = let b, a = get s in set (b, f a)
+  let[@ocaml.inline] make ~get ~set = (Lens {get; set})
+  let[@ocaml.inline] view (Lens {get; _}) v = v |> get |> snd
+  let[@ocaml.inline] update (Lens {get; set}) f s = let b, a = get s in set (b, f a)
   let[@ocaml.inline] set lens v = update lens (Fun.const v)
 
   let compose
-    ({get=get1; set=set1} : ('s1, 's2, 'b1) t)
-    ({get=get2; set=set2} : ('s2, 'a2, 'b2) t)
-    : ('s1, 'a2, 'b1 * 'b2) t
+    (Lens {get=get1; set=set1})
+    (Lens {get=get2; set=set2})
     =
     let get s1 =
         let b1, s2 = get1 s1 in
         let b2, a2 = get2 s2 in
         ((b1, b2), a2)
     in let set ((b1, b2), a2) = set1 (b1, set2 (b2, a2))
-    in {get; set}
+    in Lens {get; set}
 end
 
 module Prism = struct
-  type ('s, 'a, 'c) t = {
+  type ('s, 'a) t = Prism : {
     get : 's -> ('c, 'a) Either.t ;
     set : ('c, 'a) Either.t -> 's
-  }
+  } -> ('s, 'a) t
 
-  let[@ocaml.inline] make ~get ~set : ('s, 'a, 'c) t = {get; set}
-  let[@ocaml.inline] preview {get; _} v = get v |> Either.fold ~left:(Fun.const Option.none) ~right:Option.some
-  let[@ocaml.inline] review {set; _} v = Either.Right v |> set
-  let[@ocaml.inline] exists {get; _} v = get v |> Either.is_right
-  let[@ocaml.inline] isn't {get; _} v = get v |> Either.is_left
+  let[@ocaml.inline] make ~get ~set = (Prism {get; set})
+  let[@ocaml.inline] preview (Prism {get; _}) v = get v |> Either.fold ~left:(Fun.const Option.none) ~right:Option.some
+  let[@ocaml.inline] review (Prism {set; _}) v = Either.Right v |> set
+  let[@ocaml.inline] exists (Prism {get; _}) v = get v |> Either.is_right
+  let[@ocaml.inline] isn't (Prism {get; _}) v = get v |> Either.is_left
 
   let compose
-    ({get=get1; set=set1} : ('s1, 's2, 'b1) t)
-    ({get=get2; set=set2} : ('s2, 'a2, 'b2) t)
-    : ('s1, 'a2, ('b1, 'a2) Either.t) t =
+    (Prism {get=get1; set=set1})
+    (Prism {get=get2; set=set2})
+    =
     let open Either in
     let get v = match get1 v with
       | Left v -> v |> left |> left
@@ -66,29 +72,30 @@ module Prism = struct
           v |> left |> set2 |> right |> set1
       | Left (Left v) ->
           v |> left |> set1
-    in
-    {get; set}
+    in Prism {get; set}
 end
 
 module Affine = struct
-  type ('s, 'a, 'b, 'c) t = { get : 's -> ('c, 'b * 'a) Either.t ; set : ('c, 'b * 'a) Either.t -> 's }
+  type ('s, 'a) t = Affine : {
+    get : 's -> ('c, 'b * 'a) Either.t ;
+    set : ('c, 'b * 'a) Either.t -> 's
+  } -> ('s, 'a) t
 
-  let[@ocaml.inline] make ~get ~set : ('s, 'a, 'b, 'c) t = {get; set}
-  let[@ocaml.inline] preview {get; _} v = get v |> Either.map_right snd
-  let[@ocaml.inline] update {get; set} f v = get v |> Either.map_right (fun (b, a) -> (b, f a)) |> set
+  let[@ocaml.inline] make ~get ~set = Affine {get; set}
+  let[@ocaml.inline] preview (Affine {get; _}) v = get v |> Either.fold ~right:snd ~left:Fun.(const None)
+  let[@ocaml.inline] update (Affine {get; set}) f v = get v |> Either.map_right (fun (b, a) -> (b, f a)) |> set
   let[@ocaml.inline] set affine a v = update affine Fun.(const a) v
-  let[@ocaml.inline] exists {get; _} v = get v |> Either.is_right
-  let[@ocaml.inline] isn't {get; _} v = get v |> Either.is_left
+  let[@ocaml.inline] exists (Affine {get; _}) v = get v |> Either.is_right
+  let[@ocaml.inline] isn't (Affine {get; _}) v = get v |> Either.is_left
 
   let compose
-    ({get; set} : ('s1, 's2, 'b1, 'c1) t)
-    ({get=get'; set=set'} : ('s2, 'a2, 'b2, 'c2) t)
-    : ('s1, 'a2, 'b1 * 'b2, ('c1, 'b1 * 'c2) Either.t) t
+    (Affine {get=get1; set=set1})
+    (Affine {get=get2; set=set2})
     =
     let open Either in
-    let get s1 = match get s1 with
+    let get s1 = match get1 s1 with
       | Right (b1, s2) ->
-          begin match get' s2 with
+          begin match get2 s2 with
           | Left c2 -> left (right (b1, c2))
           | Right (b2, a2) -> right ((b1, b2), a2)
           end
@@ -97,111 +104,102 @@ module Affine = struct
     in
     let set = function
       | Right ((b1, b2), a2) ->
-          let s2 = right (b2, a2) |> set'
-          in (b1, s2) |> right |> set
+          let s2 = right (b2, a2) |> set2
+          in (b1, s2) |> right |> set1
       | Left (Right (b1, c2)) ->
-          let s2 = left c2 |> set' in
-          (b1, s2) |> right |> set
+          let s2 = left c2 |> set2 in
+          (b1, s2) |> right |> set1
       | Left (Left c1) ->
-          c1 |> left |> set
-    in
-    {get; set}
+          c1 |> left |> set1
+    in Affine {get; set}
 end
 
-type ('s, 'a) iso = ('s, 'a) Iso.t
-type ('s, 'a, 'c) lens = ('s, 'a, 'c) Lens.t
-type ('s, 'a, 'c) prism = ('s, 'a, 'c) Prism.t
-type ('s, 'a, 'b, 'c) affine = ('s, 'a, 'b, 'c) Affine.t
+type ('s, 'a) iso    = ('s, 'a) Iso.t
+type ('s, 'a) lens   = ('s, 'a) Lens.t
+type ('s, 'a) prism  = ('s, 'a) Prism.t
+type ('s, 'a) affine = ('s, 'a) Affine.t
 
 module Compose = struct
   (** Iso composition *)
 
   let iso_and_lens
-    ({get=get1;set=set1} : ('a, 'b) iso)
-    ({get=get2;set=set2} : ('b, 'c, 'd) lens)
-    : ('a, 'c, 'd) lens
+    (Iso.Iso {get=get1;set=set1})
+    (Lens.Lens {get=get2;set=set2})
     =
     let get v = get1 v |> get2 in
     let set v = set2 v |> set1 in
-    { get; set }
+    Lens.Lens { get; set }
 
   let lens_and_iso
-    ({get=get1;set=set1} : ('s, 'a, 'b) lens)
-    ({get=get2;set=set2} : ('a, 'd) iso)
-    : ('a, 'c, 'd) lens
+    (Lens.Lens {get=get1;set=set1})
+    (Iso.Iso {get=get2;set=set2})
     =
     let get v = let (b, a) = get1 v in (b, get2 a) in
     let set (b, a') = let a = set2 a' in set1 (b, a) in
-    { get; set }
+    Lens.Lens { get; set }
 
   let iso_and_prism
-    ({get=get1;set=set1} : ('a, 'b) iso)
-    ({get=get2;set=set2} : ('b, 'c, 'd) prism)
-    : ('a, 'c, 'd) prism
+    (Iso.Iso {get=get1;set=set1})
+    (Prism.Prism {get=get2;set=set2})
     =
     let get v = get1 v |> get2 in
     let set v = set2 v |> set1 in
-    { get; set }
+    Prism.Prism { get; set }
 
   let prism_and_iso
-    ({get=get1;set=set1} : ('a, 'b, 'c) prism)
-    ({get=get2;set=set2} : ('b, 'd) iso)
-    : ('a, 'c, 'd) prism
+    (Prism.Prism {get=get1;set=set1})
+    (Iso.Iso {get=get2;set=set2})
     =
-    let get v = get1 v |> Either.map_right get2 in
-    let set v = Either.map_right set2 v |> set1 in
-    { get; set }
+    let get v = v |> get1 |> Either.map_right get2 in
+    let set v = v |> Either.map_right set2 |> set1 in
+    Prism.Prism { get; set }
 
   let iso_and_affine
-    ({get=get1;set=set1} : ('a, 'b) iso)
-    ({get=get2;set=set2} : ('b, 'c, 'd, 'e) affine)
-    : ('a, 'c, 'd, 'e) affine
+    (Iso.Iso {get=get1;set=set1})
+    (Affine.Affine {get=get2;set=set2})
     =
     let get v = get1 v |> get2 in
     let set v = set2 v |> set1 in
-    { get; set }
+    Affine.Affine { get; set }
 
   let affine_and_iso
-    ({get=get1;set=set1} : ('a, 'b, 'c, 'd) affine)
-    ({get=get2;set=set2} : ('b, 'e) iso)
-    : ('a, 'e, 'c, 'd) affine
+    (Affine.Affine {get=get1;set=set1})
+    (Iso.Iso {get=get2;set=set2})
     =
     let get v = get1 v |> Either.map_right (fun (b, a) -> (b, get2 a)) in
     let set v = v |> Either.map_right (fun (b, a) -> (b, set2 a)) |> set1 in
-    { get; set }
+    Affine.Affine { get; set }
 
   let lens_and_prism
-    ({get=get1; set=set1} : ('a, 'b, 'c) lens)
-    ({get=get2; set=set2} : ('b, 'd, 'e) prism)
-    : ('a, 'd, 'c, 'c * 'e) affine
+    (Lens.Lens {get=get1; set=set1})
+    (Prism.Prism {get=get2; set=set2})
     =
     let open Either in
-    {
-      get = begin fun a ->
-        let c, b = get1 a in
-        let f x = (c, x) in
-        get2 b |> map ~left:f ~right:f
-      end ;
-      set = fun v -> begin match v with
+    let get a =
+      let c, b = get1 a in
+      let f x = (c, x) in
+      get2 b |> map ~left:f ~right:f
+    in
+    let set v = begin match v with
         | Left (c, e) -> c, (e |> left |> set2)
         | Right (c, d) -> c, (d |> right |> set2)
       end |> set1
-    }
+    in
+    Affine.Affine { get; set }
 
   let prism_and_lens
-    ({get=get1; set=set1} : ('a, 'b, 'c) prism)
-    ({get=get2; set=set2} : ('b, 'd, 'e) lens)
-    : ('a, 'd, 'e, 'c) affine
+    (Prism.Prism {get=get1; set=set1})
+    (Lens.Lens {get=get2; set=set2})
     =
     let open Either in
     let get v = get1 v |> Either.map_right get2 in
     let set v = map_right set2 v |> set1 in
-    { get; set }
+    Affine.Affine { get; set }
 
   let affine_and_lens
-    ({get=get1; set=set1} : ('s1, 'a1, 'b1, 'c1) affine)
-    ({get=get2; set=set2} : ('a1, 'a2, 'c2) lens)
-    : ('s1, 'a2, 'b1 * 'c2, 'c1) affine =
+    (Affine.Affine {get=get1; set=set1})
+    (Lens.Lens {get=get2; set=set2})
+    =
     let open Either in
     let get v = get1 v |> map_right (fun (b1, a1) ->
         let (c2, a2) = get2 a1 in ((b1, c2), a2))
@@ -210,31 +208,34 @@ module Compose = struct
      | Right ((b1, c2), a2) -> let a1 = set2 (c2, a2) in set1 (right (b1, a1))
      | Left v -> v |> left |> set1
     in
-    { get; set }
+    Affine.Affine { get; set }
 
   let affine_and_prism
-    ({get=get1; set=set1} : ('s1, 'a1, 'b1, 'c1) affine)
-    ({get=get2; set=set2} : ('a1, 'a2, 'c2) prism)
-    : ('s1, 'a2, 'b1, ('c1, 'b1 * 'c2) Either.t) affine =
+    (Affine.Affine {get=get1; set=set1})
+    (Prism.Prism {get=get2; set=set2})
+    =
     let open Either in
-     let get v = match get1 v with
-        | Left c1 -> c1 |> left |> left
-        | Right (b1, a1) ->
-            (get2 a1 |> function
-              | Left c2 -> left (right (b1, c2))
-              | Right a2 -> right (b1, a2))
-     in
-     let set v = begin match v with
-        | Right (b1, a2) -> let a1 = right a2 |> set2 in right (b1, a1) |> set1
-        | Left (Right (b1, c2)) -> let a1 = left c2 |> set2 in right (b1, a1) |> set1
-        | Left (Left c1) -> (c1 |> left |> set1)
-      end  in
-     { get; set }
+    let get v = match get1 v with
+      | Left c1 -> c1 |> left |> left
+      | Right (b1, a1) ->
+        (get2 a1 |> function
+        | Left c2 -> left (right (b1, c2))
+        | Right a2 -> right (b1, a2))
+    in
+    let set v = match v with
+      | Right (b1, a2) ->
+          let a1 = right a2 |> set2 in right (b1, a1) |> set1
+      | Left (Right (b1, c2)) ->
+          let a1 = left c2 |> set2 in right (b1, a1) |> set1
+      | Left (Left c1) ->
+          (c1 |> left |> set1)
+    in
+    Affine.Affine { get; set }
 
   let lens_and_affine
-    ({get=get1; set=set1} : ('s1, 'a1, 'c1) lens)
-    ({get=get2; set=set2} : ('a1, 'a2, 'b2, 'c2) affine)
-    : ('s1, 'a2, 'c1 * 'b2, 'c1 * 'c2) affine =
+    (Lens.Lens {get=get1; set=set1})
+    (Affine.Affine {get=get2; set=set2})
+    =
     let open Either in
     let get v =
       let (c1, a1) = get1 v in
@@ -246,12 +247,12 @@ module Compose = struct
       | Right ((c1, b2), a2) -> let a1 = set2 (right (b2, a2)) in (c1, a1)
       | Left (c1, c2) -> let a1 = c2 |> left |> set2 in (c1, a1)) |> set1
     in
-    { get; set }
+    Affine.Affine { get; set }
 
   let prism_and_affine
-    ({get=get1; set=set1} : ('s1, 's2, 'c1) prism)
-    ({get=get2; set=set2} : ('s2, 'a2, 'b2, 'c2) affine)
-    : ('s1, 'a2, 'b2, ('c1, 'c2) Either.t) affine =
+    (Prism.Prism {get=get1; set=set1})
+    (Affine.Affine {get=get2; set=set2})
+    =
     let open Either in
     let get v = match get1 v with
       | Left c1 -> c1 |> left |> left
@@ -264,7 +265,7 @@ module Compose = struct
       | Left (Right c2) -> c2 |> left |> set2 |> right |> set1
       | Left (Left c1) -> c1 |> left |> set1
     in
-    { get; set }
+    Affine.Affine { get; set }
 end
 
 let ( % ) = Lens.compose
@@ -325,3 +326,5 @@ let _hd () = let open Either in Affine.make
 let _tl () = let open Either in Affine.make
   ~get:(function [] -> Left () | x::xs -> Right (x, xs))
   ~set:(function Left _ -> [] | Right (x, xs) -> x::xs)
+
+let _1_1_1 () = _1 () % _1 () % _1 ()
