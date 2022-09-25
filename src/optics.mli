@@ -1,18 +1,18 @@
 (**
-    Existential optics in OCaml.
+    Existential optics in OCaml. They are intended as
+    both an experiment and for personal use. Feel free
+    to use it anyways.
 
-    Intended to be an experiment, but also a simple implementation
-    of several optics. Generally, it is recommended to open
-    this module wherever it is needed.
+    {2 Main optics}
  *)
 
 module Iso :
   sig
+    (** Establishes an isomorphic relation. *)
     type (_, _, _, _) t = Iso : {
       get : 's -> 'a;
       set : 'b -> 't;
     } -> ('s, 't, 'a, 'b) t
-    (** Establishes an isomorphic relation. *)
 
     type ('s, 'a) t' = ('s, 's, 'a, 'a) t
 
@@ -61,7 +61,7 @@ module Lens :
     val view : ('s, 't, 'a, 'b) t -> 's -> 'a
     (** Extracts the subpart ['a] out of ['s]. *)
 
-    val update : ('s, 'b, 'c, 'd) t -> ('c -> 'd) -> 'a -> 'b
+    val update : ('s, 't, 'a, 'b) t -> ('a -> 'b) -> 's -> 't
     (** Updates ['a] in ['s] by passing it through a function. This may
         change the types if the lens does not have matching types. *)
 
@@ -74,7 +74,8 @@ module Lens :
 
 module Prism :
   sig
-    (** Establishes a relation in which ['s] may be an ['a]. *)
+    (** Establishes a relation in which we focus on whether ['s]
+        may be an ['a]. *)
     type (_, _, _, _) t = Prism : {
       get : 's -> ('c, 'a) Either.t;
       set : ('c, 'b) Either.t -> 't;
@@ -110,34 +111,49 @@ module Prism :
 
 module Affine :
   sig
+    (** Establishes a relation in which we focus on part of
+        a particular possible case of ['s].  *)
     type (_, _, _, _) t = Affine : {
       get : 's -> ('c1, 'c2 * 'a) Either.t ;
       set : ('c1, 'c2 * 'b) Either.t -> 't;
     } -> ('s, 't, 'a, 'b) t
 
     type ('s, 'a) t' = ('s, 's, 'a, 'a) t
+
     val make :
-      get:('a -> ('b, 'c * 'd) Either.t) ->
-      set:(('b, 'c * 'e) Either.t -> 'f) -> ('a, 'f, 'd, 'e) t
+      get:('s -> ('c1, 'c2 * 'a) Either.t) ->
+      set:(('c1, 'c2 * 'b) Either.t -> 't) -> ('s, 't, 'a, 'b) t
+    (** Build an affine traversal from a pair of functions inversed of each other. *)
+
     val make' :
-      get:('s -> ('b, 'c * 'a) Either.t) ->
-      set:(('b, 'c * 'a) Either.t -> 's) -> ('s, 'a) t'
-    val preview : ('a, 'b, 'c, 'd) t -> 'a -> 'c option
-    val update : ('a, 'b, 'c, 'd) t -> ('c -> 'd) -> 'a -> 'b
-    val set : ('a, 'b, 'c, 'd) t -> 'd -> 'a -> 'b
-    val exists : ('a, 'b, 'c, 'd) t -> 'a -> bool
-    val isn't : ('a, 'b, 'c, 'd) t -> 'a -> bool
+      get:('s -> ('c1, 'c2 * 'a) Either.t) ->
+      set:(('c1, 'c2 * 'a) Either.t -> 's) -> ('s, 'a) t'
+    (** Same as {!make}, but it restricts the types down to {!type:t'} *)
+
+    val preview : ('s, 't, 'a, 'b) t -> 's -> 'a option
+    (** [preview affine s] may return [Some a] if it successfully
+        extracts it out of [s], None otherwise. *)
+
+    val update : ('s, 't, 'a, 'b) t -> ('a -> 'b) -> 's -> 't
+    (** [update affine f s] may update the inner value [a] inside [s]. *)
+
+    val set : ('s, 't, 'a, 'b) t -> 'b -> 's -> 't
+    (** [set affine b s] updates the inner value in [s] with [b]. *)
+
+    val exists : ('s, 't, 'a, 'b) t -> 's -> bool
+    (** [exists affine s] is the same as [preview affine s |> Option.is_some]. *)
+
+    val isn't : ('s, 't, 'a, 'b) t -> 's -> bool
+    (** [isn't affine s] is the same as [not (exists affine s)]. *)
+
     val compose :
       ('a, 'b, 'c, 'd) t -> ('c, 'd, 'e, 'f) t -> ('a, 'b, 'e, 'f) t
   end
-type ('s, 't, 'a, 'b) iso = ('s, 't, 'a, 'b) Iso.t
-type ('s, 't, 'a, 'b) lens = ('s, 't, 'a, 'b) Lens.t
-type ('s, 't, 'a, 'b) prism = ('s, 't, 'a, 'b) Prism.t
-type ('s, 't, 'a, 'b) affine = ('s, 't, 'a, 'b) Affine.t
-type ('s, 'a) iso' = ('s, 'a) Iso.t'
-type ('s, 'a) lens' = ('s, 'a) Lens.t'
-type ('s, 'a) prism' = ('s, 'a) Prism.t'
-type ('s, 'a) affine' = ('s, 'a) Affine.t'
+
+(** Every function in this module has the form of [X_and_Y], in which
+    it takes two optics, of types X and Y respectively, and returns
+    an optic that is the most simple but compatible combination of them.
+  *)
 module Compose :
   sig
     val iso_and_lens :
@@ -178,70 +194,155 @@ module Compose :
       ('c, 'd, 'e, 'f) Affine.t -> ('a, 'b, 'e, 'f) Affine.t
   end
 
-val ( % ) :
-  ('a, 'b, 'c, 'd) Lens.t ->
-  ('c, 'd, 'e, 'f) Lens.t -> ('a, 'b, 'e, 'f) Lens.t
-val ii :
-  ('a, 'b, 'c, 'd) Iso.t -> ('e, 'f, 'a, 'b) Iso.t -> ('e, 'f, 'c, 'd) Iso.t
-val il :
-  ('a, 'b, 'c, 'd) Lens.t ->
-  ('e, 'f, 'a, 'b) Iso.t -> ('e, 'f, 'c, 'd) Lens.t
-val ip :
-  ('a, 'b, 'c, 'd) Prism.t ->
-  ('e, 'f, 'a, 'b) Iso.t -> ('e, 'f, 'c, 'd) Prism.t
-val ia :
-  ('a, 'b, 'c, 'd) Affine.t ->
-  ('e, 'f, 'a, 'b) Iso.t -> ('e, 'f, 'c, 'd) Affine.t
-val li :
-  ('a, 'b, 'c, 'd) Iso.t ->
-  ('e, 'f, 'a, 'b) Lens.t -> ('e, 'f, 'c, 'd) Lens.t
-val pi :
-  ('a, 'b, 'c, 'd) Iso.t ->
-  ('e, 'f, 'a, 'b) Prism.t -> ('e, 'f, 'c, 'd) Prism.t
-val ai :
-  ('a, 'b, 'c, 'd) Iso.t ->
-  ('e, 'f, 'a, 'b) Affine.t -> ('e, 'f, 'c, 'd) Affine.t
-val ll :
-  ('a, 'b, 'c, 'd) Lens.t ->
-  ('e, 'f, 'a, 'b) Lens.t -> ('e, 'f, 'c, 'd) Lens.t
-val pp :
-  ('a, 'b, 'c, 'd) Prism.t ->
-  ('e, 'f, 'a, 'b) Prism.t -> ('e, 'f, 'c, 'd) Prism.t
-val lp :
-  ('a, 'b, 'c, 'd) Prism.t ->
-  ('e, 'f, 'a, 'b) Lens.t -> ('e, 'f, 'c, 'd) Affine.t
-val pl :
-  ('a, 'b, 'c, 'd) Lens.t ->
-  ('e, 'f, 'a, 'b) Prism.t -> ('e, 'f, 'c, 'd) Affine.t
-val aa :
-  ('a, 'b, 'c, 'd) Affine.t ->
-  ('e, 'f, 'a, 'b) Affine.t -> ('e, 'f, 'c, 'd) Affine.t
-val al :
-  ('a, 'b, 'c, 'd) Lens.t ->
-  ('e, 'f, 'a, 'b) Affine.t -> ('e, 'f, 'c, 'd) Affine.t
-val ap :
-  ('a, 'b, 'c, 'd) Prism.t ->
-  ('e, 'f, 'a, 'b) Affine.t -> ('e, 'f, 'c, 'd) Affine.t
-val la :
-  ('a, 'b, 'c, 'd) Affine.t ->
-  ('e, 'f, 'a, 'b) Lens.t -> ('e, 'f, 'c, 'd) Affine.t
-val pa :
-  ('a, 'b, 'c, 'd) Affine.t ->
-  ('e, 'f, 'a, 'b) Prism.t -> ('e, 'f, 'c, 'd) Affine.t
+(**
+    {2 Exported optics}
 
-val down : ('a, 'b, 'c, 'd) Iso.t -> 'a -> 'c
-val up : ('a, 'b, 'c, 'd) Iso.t -> 'd -> 'b
-val view : ('a, 'b, 'c, 'd) Lens.t -> 'a -> 'c
-val update : ('a, 'b, 'c, 'd) Lens.t -> ('c -> 'd) -> 'a -> 'b
-val set : ('a, 'b, 'c, 'd) Lens.t -> 'd -> 'a -> 'b
-val preview : ('a, 'b, 'c, 'd) Prism.t -> 'a -> 'c option
-val review : ('a, 'b, 'c, 'd) Prism.t -> 'd -> 'b
-val preview' : ('a, 'b, 'c, 'd) Affine.t -> 'a -> 'c option
-val update' : ('a, 'b, 'c, 'd) Affine.t -> ('c -> 'd) -> 'a -> 'b
-val set' : ('a, 'b, 'c, 'd) Affine.t -> 'd -> 'a -> 'b
-val _1 : unit -> ('a * 'b, 'a) Lens.t'
-val _2 : unit -> ('a * 'b, 'b) Lens.t'
-val _right : unit -> (('a, 'b) Either.t, 'b) Prism.t'
-val _left : unit -> (('a, 'b) Either.t, 'a) Prism.t'
-val _hd : unit -> ('a list, 'a) Affine.t'
-val _tl : unit -> ('a list, 'a list) Affine.t'
+    Each optic has two versions - one with a same-type restriction
+    in which modifications over the focused part must not change the
+    inner type; and the version in which there's no such restriction.
+  *)
+
+type ('s, 't, 'a, 'b) iso = ('s, 't, 'a, 'b) Iso.t
+(** Establishes an isomorphic relation. *)
+
+type ('s, 't, 'a, 'b) lens = ('s, 't, 'a, 'b) Lens.t
+(** Establishes a relation in which ['s] is subdivided into ['a] and ['c]. *)
+
+type ('s, 't, 'a, 'b) prism = ('s, 't, 'a, 'b) Prism.t
+(** Establishes a relation in which we focus on whether ['s]
+    may be an ['a]. *)
+
+type ('s, 't, 'a, 'b) affine = ('s, 't, 'a, 'b) Affine.t
+(** Establishes a relation in which we focus on part of
+    a particular possible case of ['s].  *)
+
+type ('s, 'a) iso' = ('s, 'a) Iso.t'
+type ('s, 'a) lens' = ('s, 'a) Lens.t'
+type ('s, 'a) prism' = ('s, 'a) Prism.t'
+type ('s, 'a) affine' = ('s, 'a) Affine.t'
+
+(**
+    {2 Composition aliases}
+
+    The following functions act as aliases for the composition
+    functions inside {!Compose} and the other modules.
+
+    They all have the same naming and usage convention.
+    [XY Y' X'] builds a new optic by composition of [X'] and [Y'],
+    where [X] and [Y] are letters which are the first letter of
+    a type of optic ([i] = {!iso}, [l] = {!lens}, [p] = {!prism}
+    and [a] = {!affine}), while [X'] and [Y'] are the types suggested
+    by [X] and [Y].
+
+    Do notice how the arguments are inverted. The intended usage is to
+    apply these functions in a pipeline, i.e. [some_lens |> lp some_prism |> ai some_iso].
+    By inverting them, the aliases' naming convention coincide with
+    what they take from the left and the right in a pipeline.
+  *)
+
+val ii :
+  ('a, 'b, 'c, 'd) iso ->
+  ('e, 'f, 'a, 'b) iso -> ('e, 'f, 'c, 'd) iso
+val il :
+  ('a, 'b, 'c, 'd) lens ->
+  ('e, 'f, 'a, 'b) iso -> ('e, 'f, 'c, 'd) lens
+val ip :
+  ('a, 'b, 'c, 'd) prism ->
+  ('e, 'f, 'a, 'b) iso -> ('e, 'f, 'c, 'd) prism
+val ia :
+  ('a, 'b, 'c, 'd) affine ->
+  ('e, 'f, 'a, 'b) iso -> ('e, 'f, 'c, 'd) affine
+val li :
+  ('a, 'b, 'c, 'd) iso ->
+  ('e, 'f, 'a, 'b) lens -> ('e, 'f, 'c, 'd) lens
+val pi :
+  ('a, 'b, 'c, 'd) iso ->
+  ('e, 'f, 'a, 'b) prism -> ('e, 'f, 'c, 'd) prism
+val ai :
+  ('a, 'b, 'c, 'd) iso ->
+  ('e, 'f, 'a, 'b) affine -> ('e, 'f, 'c, 'd) affine
+val ll :
+  ('a, 'b, 'c, 'd) lens ->
+  ('e, 'f, 'a, 'b) lens -> ('e, 'f, 'c, 'd) lens
+val pp :
+  ('a, 'b, 'c, 'd) prism ->
+  ('e, 'f, 'a, 'b) prism -> ('e, 'f, 'c, 'd) prism
+val lp :
+  ('a, 'b, 'c, 'd) prism ->
+  ('e, 'f, 'a, 'b) lens -> ('e, 'f, 'c, 'd) affine
+val pl :
+  ('a, 'b, 'c, 'd) lens ->
+  ('e, 'f, 'a, 'b) prism -> ('e, 'f, 'c, 'd) affine
+val aa :
+  ('a, 'b, 'c, 'd) affine ->
+  ('e, 'f, 'a, 'b) affine -> ('e, 'f, 'c, 'd) affine
+val al :
+  ('a, 'b, 'c, 'd) lens ->
+  ('e, 'f, 'a, 'b) affine -> ('e, 'f, 'c, 'd) affine
+val ap :
+  ('a, 'b, 'c, 'd) prism ->
+  ('e, 'f, 'a, 'b) affine -> ('e, 'f, 'c, 'd) affine
+val la :
+  ('a, 'b, 'c, 'd) affine ->
+  ('e, 'f, 'a, 'b) lens -> ('e, 'f, 'c, 'd) affine
+val pa :
+  ('a, 'b, 'c, 'd) affine ->
+  ('e, 'f, 'a, 'b) prism -> ('e, 'f, 'c, 'd) affine
+
+(** {2 Function aliases} *)
+
+val down : ('s, 't, 'a, 'b) iso -> 's -> 'a
+(** Same as {!Iso.down}. *)
+
+val up : ('s, 't, 'a, 'b) iso -> 'b -> 't
+(** Same as {!Iso.up}. *)
+
+val view : ('s, 't, 'a, 'b) lens -> 's -> 'a
+(** Same as {!Lens.view}. *)
+
+val update : ('s, 't, 'a, 'b) lens -> ('a -> 'b) -> 's -> 't
+(** Same as {!Lens.update}. *)
+
+val set : ('s, 't, 'a, 'b) lens -> 'b -> 's -> 't
+(** Same as {!Lens.set}. *)
+
+val preview : ('s, 't, 'a, 'b) prism -> 's -> 'a option
+(** Same as {!Prism.preview}. *)
+
+val review : ('s, 't, 'a, 'b) prism -> 'b -> 't
+(** Same as {!Prism.review}. *)
+
+val preview' : ('s, 't, 'a, 'b) affine -> 's -> 'a option
+(** Same as {!Affine.preview}. *)
+
+val update' : ('s, 't, 'a, 'b) affine -> ('a -> 'b) -> 's -> 't
+(** Same as {!Affine.update}. *)
+
+val set' : ('s, 't, 'a, 'b) affine -> 'b -> 's -> 't
+(** Same as {!Affine.set}. *)
+
+(**
+    {2 Generic builtin optics}
+
+    Because of OCaml's value restrictions, optics
+    need to be instantiated right when they're intended for
+    usage, which is why they're all functions.
+  *)
+
+val _1 : unit -> ('a * 'b, 'a) lens'
+(** A {!lens} over the first element of a 2-tuple. *)
+
+val _2 : unit -> ('a * 'b, 'b) lens'
+(** A {!lens} over the second element of a 2-tuple. *)
+
+val _right : unit -> (('a, 'b) Either.t, 'b) prism'
+(** A {!prism} over the right value of an [either] value. *)
+
+val _left : unit -> (('a, 'b) Either.t, 'a) prism'
+(** A {!prism} over the left value of an [either] value. *)
+
+val _hd : unit -> ('a list, 'a) affine'
+(** An {!affine} over the head of a list. *)
+
+val _tl : unit -> ('a list, 'a list) affine'
+(** An {!affine} over the tail of a list. *)

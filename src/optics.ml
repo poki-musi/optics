@@ -1,7 +1,7 @@
 module Iso = struct
   type (_, _, _, _) t = Iso : {
     get : 's -> 'a ;
-    set : 'b -> 't ;
+    set : 'b -> 't ; 
   } -> ('s, 't, 'a, 'b) t
 
   type ('s, 'a) t' = ('s, 's, 'a, 'a) t
@@ -329,8 +329,8 @@ let _1 () = Lens.make'
   ~get:(fun (a, b) -> (b, a))
   ~set:(fun (b, a) -> (a, b))
 
-let _2 () = Lens.make'
-  ~get:(fun (a, b) -> (a, b))
+let _2 () = Lens.make' 
+  ~get:(fun (a, b) -> (a, b)) 
   ~set:(fun (a, b) -> (a, b))
 
 let _right () = Prism.make'
